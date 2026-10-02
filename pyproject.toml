@@ -1,6 +1,6 @@
 [project]
 name = "bioformats-to-incarta-app"
-version = "1.0.0"
+version = "1.0.1"
 description = "Command line and window for Bio-Formats to IN Carta, run through jgo without Fiji"
 readme = "README.md"
 license = "MIT"
