@@ -94,6 +94,22 @@ def sharp_on_windows() -> None:
             pass
 
 
+def own_taskbar_entry() -> None:
+    """Group under our own name and icon on the Windows taskbar.
+
+    Without an app ID of its own, the window is filed under python.exe and
+    the taskbar shows Python's icon rather than the one the window sets.
+    """
+    if os.name != "nt":
+        return
+    import ctypes
+    try:
+        ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(
+            "UNIGE.Biochemistry.BioformatsToIncarta")
+    except (AttributeError, OSError):
+        pass
+
+
 def open_folder(path: Path) -> None:
     if os.name == "nt":
         os.startfile(path)  # noqa: S606 -- a folder the user chose
@@ -431,7 +447,8 @@ class App:
 
 
 def main() -> None:
-    sharp_on_windows()  # before the first window exists
+    sharp_on_windows()  # both before the first window exists
+    own_taskbar_entry()
     root = tk.Tk()
     App(root)
     root.mainloop()

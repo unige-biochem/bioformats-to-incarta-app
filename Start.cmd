@@ -32,6 +32,16 @@ if not defined UV (
     exit /b 1
 )
 
+rem  A shortcut with the app's icon, next to this file. A .cmd cannot carry an
+rem  icon of its own, and a shortcut cannot ship in the zip, because it holds
+rem  absolute paths - so it is written here, and rewritten on every start to
+rem  follow the folder if it moves. In the background: it must not delay the
+rem  window, and if it fails, nothing else depends on it. The paths travel as
+rem  environment variables so that a quote in a folder name cannot break them.
+set "B2I_HOME=%~dp0"
+set "B2I_SELF=%~f0"
+start "" /b powershell -NoProfile -ExecutionPolicy Bypass -Command "$s = (New-Object -ComObject WScript.Shell).CreateShortcut($env:B2I_HOME + 'Bio-Formats to IN Carta.lnk'); $s.TargetPath = $env:B2I_SELF; $s.WorkingDirectory = $env:B2I_HOME; $s.IconLocation = $env:B2I_HOME + 'src\bioformats_to_incarta_app\assets\app.ico,0'; $s.Description = 'Convert Bio-Formats images into IN Carta datasets'; $s.Save()" >nul 2>&1
+
 echo Starting. The window will appear in a few seconds.
 "%UV%" run python -m bioformats_to_incarta_app.gui
 if errorlevel 1 (

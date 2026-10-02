@@ -16,6 +16,12 @@ Double-click `Start.cmd` (Windows) or run `./start.sh` (macOS, Linux). Both
 install [uv](https://docs.astral.sh/uv/) if it is missing; uv then brings
 Python and everything else.
 
+On Windows, the first start also creates a **Bio-Formats to IN Carta**
+shortcut next to `Start.cmd`, with the app's icon. Use it from then on, or copy
+it to the Desktop. A `.cmd` file cannot carry an icon itself, and a shortcut
+cannot ship in the zip because it stores absolute paths. So `Start.cmd`
+rewrites the shortcut on every start, which keeps it valid if the folder moves.
+
 Choose an image and an output folder, then **Convert**. **Stop** ends the
 conversion before its next plane; a second click kills it at once. **Check Java
 setup** does the first-run downloads up front, so they do not look like a
@@ -89,6 +95,13 @@ The window remembers its last folders and options in
 uv sync
 uv run pytest                  # includes real JVM runs on Bio-Formats .fake files
 uv run pytest -m "not jvm"     # protocol and argument tests only
+```
+
+The icon (Bio-Formats layers → well plate) is generated from OME's vector logo,
+which the script downloads itself:
+
+```bash
+uv run --no-project --with pymupdf --with pillow python tools/make_icon.py
 ```
 
 ## License

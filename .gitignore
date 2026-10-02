@@ -7,3 +7,6 @@ dist/
 
 # Claude Code local settings
 .claude/settings.local.json
+
+# written by Start.cmd on each start (it holds absolute paths)
+Bio-Formats to IN Carta.lnk
