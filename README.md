@@ -27,6 +27,27 @@ conversion before its next plane; a second click kills it at once. **Check Java
 setup** does the first-run downloads up front, so they do not look like a
 conversion that hangs.
 
+## Installing for every user of a Windows machine
+
+Double-click `Install.cmd`; it asks for administrator rights. It installs into
+`C:\Program Files\Bio-Formats to IN Carta` (or the folder given as its
+argument) and puts a **Bio-Formats to IN Carta** shortcut in the Start Menu
+and on the Desktop of every user.
+
+That folder holds everything: the app, its own Python, a JDK and the
+converter's jars, all downloaded during the install (about 500 MB). Users can
+read the folder but not write to it, so they have nothing to download, and no
+uv or Java of their own is needed. The app recognizes such an install
+by its `java` folder and uses only that folder's caches; each user still keeps
+their own settings.
+
+To update, run the new version's `Install.cmd` again. Do the same if a new
+version needs jars the folder does not have yet: users cannot add them. To
+uninstall, delete the folder and the two shortcuts.
+
+The command line of an installed copy is
+`"C:\Program Files\Bio-Formats to IN Carta\.venv\Scripts\bioformats-to-incarta.exe"`.
+
 ## The command line
 
 ```bash

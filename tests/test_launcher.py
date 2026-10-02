@@ -102,3 +102,32 @@ def test_an_unreachable_reader_is_skipped_not_fatal(monkeypatch, tmp_path):
     said = []
     assert launcher.fetch_jars(said.append) == []
     assert any("WARNING" in line for line in said)
+
+
+def shared_install(monkeypatch, tmp_path, exists: bool) -> Path:
+    shared = tmp_path / "java"
+    if exists:
+        shared.mkdir()
+    monkeypatch.setattr(launcher, "SHARED", shared)
+    monkeypatch.setattr(launcher, "SHARED_JDK", shared / "jdk")
+    return shared
+
+
+def test_a_shared_install_keeps_everything_in_its_folder(monkeypatch, tmp_path):
+    shared = shared_install(monkeypatch, tmp_path, exists=True)
+    argv = Conversion(Options(tmp_path / "in.fake", tmp_path / "out")).argv([])
+    jgo_args = argv[:argv.index("run")]
+    assert jgo_args[jgo_args.index("--cache-dir") + 1] == str(shared / "jgo")
+    assert jgo_args[jgo_args.index("--repo-cache") + 1] == str(shared / "m2")
+    assert launcher.jar_cache() == shared / "jars"
+    environment = launcher._environment()
+    assert environment["JAVA_HOME"] == str(shared / "jdk")
+    assert environment["PATH"].startswith(str(shared / "jdk" / "bin"))
+
+
+def test_without_a_shared_install_the_user_caches_are_used(monkeypatch, tmp_path):
+    shared_install(monkeypatch, tmp_path, exists=False)
+    argv = Conversion(Options(tmp_path / "in.fake", tmp_path / "out")).argv([])
+    assert "--cache-dir" not in argv and "--repo-cache" not in argv
+    assert tmp_path not in launcher.jar_cache().parents
+    assert launcher._environment().get("JAVA_HOME") != str(tmp_path / "java" / "jdk")

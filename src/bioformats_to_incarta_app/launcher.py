@@ -20,6 +20,7 @@ import shutil
 import subprocess
 import sys
 import threading
+import time
 import urllib.request
 from collections import deque
 from collections.abc import Callable, Iterator
@@ -91,12 +92,21 @@ PROBE = Path(__file__).resolve().parent / "probe.groovy"
 #: The choices the command's dialog offers, in the same order.
 COMPRESSIONS = ["Uncompressed", "LZW", "JPEG-2000", "JPEG-2000 Lossy", "zlib"]
 
-#: --java-version 21: what Fiji ships and the converter is developed on; left
-#: alone, jgo picks the oldest Java the bytecode allows (11).
+#: What Fiji ships and the converter is developed on; left alone, jgo picks the
+#: oldest Java the bytecode allows (11). Zulu is the vendor jgo fetches.
+JAVA_VERSION, JAVA_VENDOR = "21", "zulu"
+
 #: --class-path-only: every jar on the class path, the way Fiji runs them;
 #: jgo would otherwise move the modular ones onto the module path.
-JGO_FLAGS = ["--color", "plain", "--class-path-only", "--java-version", "21",
+JGO_FLAGS = ["--color", "plain", "--class-path-only", "--java-version", JAVA_VERSION,
              "--timeout", "120", "-r", f"scijava:{SCIJAVA_REPO}"]
+
+#: Written by Install.cmd, next to the virtual environment: a JDK and every jar,
+#: downloaded once by an administrator and read by every user of the machine.
+#: When it exists, nothing goes to the user's own caches. It is read-only to
+#: them, so a jar it lacks is not fetched: running Install.cmd again is the fix.
+SHARED = Path(sys.prefix).parent / "java"
+SHARED_JDK = SHARED / "jdk"
 
 #: jgo 3.1.0 drops JVM arguments passed after its `--`, so they travel in the
 #: environment instead. UTF-8 so that a file name with an accent comes back
@@ -113,8 +123,15 @@ EXIT_DONE, EXIT_FAILED, EXIT_STOPPED = 0, 1, 3
 TAIL_LINES = 200
 
 
+def shared() -> bool:
+    return SHARED.is_dir()
+
+
 def jar_cache() -> Path:
-    """Downloaded jars live with the user's caches, never in the repository."""
+    """Downloaded jars live with the user's caches, never in the repository -
+    or in the machine's shared folder, when there is one."""
+    if shared():
+        return SHARED / "jars"
     if os.name == "nt":
         base = Path(os.environ.get("LOCALAPPDATA")
                     or Path.home() / "AppData" / "Local")
@@ -158,6 +175,39 @@ def download(url: str, destination: Path) -> None:
     part.replace(destination)
 
 
+def java_executable(home: Path) -> Path:
+    return home / "bin" / ("java.exe" if os.name == "nt" else "java")
+
+
+def fetch_shared_jdk(say: Callable[[str], None]) -> None:
+    """Copy the JDK jgo would use into the shared folder, once.
+
+    Not left in cjdk's cache, which would do: cjdk rewrites its index there
+    every day, and the users cannot write to the shared folder. A plain JDK
+    at a fixed place is what `_environment()` points jgo to instead.
+    """
+    if java_executable(SHARED_JDK).exists():
+        return
+    import cjdk
+
+    say(f"Fetching Java {JAVA_VERSION} ({JAVA_VENDOR}) for every user (once)")
+    home = cjdk.java_home(version=JAVA_VERSION, vendor=JAVA_VENDOR)
+    part = SHARED_JDK.with_name(SHARED_JDK.name + ".part")
+    shutil.rmtree(part, ignore_errors=True)
+    shutil.copytree(home, part)
+    # A virus scanner reading the new files keeps the folder from being
+    # renamed for a few seconds.
+    for attempt in range(60):
+        try:
+            part.replace(SHARED_JDK)
+            break
+        except PermissionError:
+            if attempt == 59:
+                raise
+            time.sleep(1)
+    say(f"  saved {SHARED_JDK}")
+
+
 def jgo_command() -> list[str]:
     """jgo, preferably the one installed alongside this package."""
     if importlib.util.find_spec("jgo") is not None:
@@ -186,15 +236,26 @@ def _popen(argv: list[str]) -> subprocess.Popen:
                                   | subprocess.CREATE_NO_WINDOW)
     else:
         extra["start_new_session"] = True
+    return subprocess.Popen(
+        argv, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT, text=True, encoding="utf-8", errors="replace",
+        bufsize=1, env=_environment(), **extra,
+    )
+
+
+def _environment() -> dict[str, str]:
     # jgo is Python too: writing to a pipe on Windows it would otherwise use the
     # ANSI code page, and its download bars hold characters that has not got.
     environment = dict(os.environ, JAVA_TOOL_OPTIONS=JAVA_TOOL_OPTIONS,
                        PYTHONIOENCODING="utf-8")
-    return subprocess.Popen(
-        argv, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT, text=True, encoding="utf-8", errors="replace",
-        bufsize=1, env=environment, **extra,
-    )
+    if shared():
+        # jgo takes a suitable Java it finds before asking cjdk for one. On
+        # Windows it looks for `bin/java` without `.exe` under JAVA_HOME and so
+        # never finds it there; first on the PATH, it does.
+        environment["JAVA_HOME"] = str(SHARED_JDK)
+        environment["PATH"] = os.pathsep.join(
+            [str(java_executable(SHARED_JDK).parent), environment.get("PATH", "")])
+    return environment
 
 
 def _jgo_run(*, max_heap: str | None, extra_classpath: list[Path],
@@ -202,9 +263,12 @@ def _jgo_run(*, max_heap: str | None, extra_classpath: list[Path],
     heap = ["--max-heap", max_heap] if max_heap else []
     classpath = [arg for jar in extra_classpath
                  for arg in ("--add-classpath", str(jar))]
+    # Flags, which win over a user's JGO_CACHE_DIR, M2_REPO and jgo.conf alike.
+    caches = (["--cache-dir", str(SHARED / "jgo"), "--repo-cache", str(SHARED / "m2")]
+              if shared() else [])
     # The two `--` are jgo's: the first ends jgo's arguments, the second the
     # JVM's, so what follows reaches GroovyMain.
-    return [*jgo_command(), *JGO_FLAGS, *heap, "run",
+    return [*jgo_command(), *JGO_FLAGS, *caches, *heap, "run",
             "--main-class", "groovy.ui.GroovyMain", *classpath,
             ENDPOINT, "--", "--", *groovy_args]
 
@@ -393,6 +457,8 @@ def prepare() -> Iterator[str]:
     not start raises.
     """
     found: list[str] = []
+    if shared():
+        fetch_shared_jdk(found.append)
     downloaded = fetch_jars(found.append)
     yield from found
     labels = {reader.reader_class: reader.label for reader in EXTERNAL_READERS}
