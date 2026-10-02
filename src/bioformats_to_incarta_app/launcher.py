@@ -208,10 +208,25 @@ def fetch_shared_jdk(say: Callable[[str], None]) -> None:
     say(f"  saved {SHARED_JDK}")
 
 
+def console_python() -> str:
+    """The Python to run jgo with: never pythonw.exe, which the window runs on.
+
+    pythonw has no console, so the java.exe jgo starts - a console program -
+    would get a new, visible console of its own and print there, not into the
+    pipe we read. python.exe, started with CREATE_NO_WINDOW, gets a hidden
+    console instead, which java shares along with the pipe.
+    """
+    executable = Path(sys.executable)
+    console = executable.with_name("python.exe")
+    if executable.name.lower() == "pythonw.exe" and console.exists():
+        return str(console)
+    return sys.executable
+
+
 def jgo_command() -> list[str]:
     """jgo, preferably the one installed alongside this package."""
     if importlib.util.find_spec("jgo") is not None:
-        return [sys.executable, "-m", "jgo"]
+        return [console_python(), "-m", "jgo"]
     found = shutil.which("jgo")
     if found:
         return [found]

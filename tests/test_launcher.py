@@ -131,3 +131,12 @@ def test_without_a_shared_install_the_user_caches_are_used(monkeypatch, tmp_path
     assert "--cache-dir" not in argv and "--repo-cache" not in argv
     assert tmp_path not in launcher.jar_cache().parents
     assert launcher._environment().get("JAVA_HOME") != str(tmp_path / "java" / "jdk")
+
+
+def test_jgo_never_runs_on_pythonw(monkeypatch, tmp_path):
+    for name in ("python.exe", "pythonw.exe"):
+        (tmp_path / name).touch()
+    monkeypatch.setattr(launcher.sys, "executable", str(tmp_path / "pythonw.exe"))
+    assert launcher.jgo_command()[0] == str(tmp_path / "python.exe")
+    monkeypatch.setattr(launcher.sys, "executable", str(tmp_path / "python.exe"))
+    assert launcher.jgo_command()[0] == str(tmp_path / "python.exe")
